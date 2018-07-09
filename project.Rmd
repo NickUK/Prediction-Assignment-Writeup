@@ -1,0 +1,95 @@
+---
+title: "Coursera Practical Machine Learning Project"
+author: "Nick Horne"
+date: "6 July 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: <http://groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset).
+
+```{r include=F}
+training_data_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_data_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+```
+
+The training data for this project are available here:
+<`r training_data_url`>
+
+The test data are available here:
+<`r test_data_url`>
+
+The data for this project come from this source: <http://groupware.les.inf.puc-rio.br/har>. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+## Exploratory analysis
+
+```{r, include=F}
+library(caret, quietly=T)
+library(randomForest, quietly=T)
+
+if (!file.exists("pml-training.csv")) {
+  download.file(training_data_url, "pml-training.csv")
+}
+if (!file.exists("pml-testing.csv")) {
+  download.file(test_data_url, "pml-testing.csv")
+}
+```
+
+Load in the test data
+```{r}
+training <- read.csv("pml-training.csv")
+testing <- read.csv("pml-testing.csv")
+```
+
+We can see that the classification (classe) is a factor of 5 levels:
+```{r}
+levels(training$classe)
+```
+
+Reading up on the information provided, class **A** would mean they completed the barbell lifts using the correct technique and the other levels are lifts with common mistakes.
+
+We can count the number of NA variables in each column
+
+```{r}
+na_counts <- sapply(training, function(x) sum(length(which(is.na(x)))))
+```
+
+There are `r sum(na_counts == 19216)` columns containing exactly 19216 NA records. We should remove these variables before doing any predictions as it accounts for a large percentage of the recordings we have: `r formatC(((19216 / dim(training)[1] * 100)), digits=2, format="f")`. The same columns are also removed from the test data.
+
+```{r}
+na_vars <- which(na_counts == 19216)
+training <- training[-na_vars]
+testing <- testing[-na_vars]
+```
+
+We can also remove any variables with near zero variance. The same is applied to the testing data.
+
+```{r}
+nsv <- nearZeroVar(training)
+training <- training[,-nsv]
+testing <- testing[,-nsv]
+```
+
+We now have `r dim(testing)[2]` columns remaining. 
+
+**TODO**
+- Check correlation?
+- Remove non-numerical?
+
+## Principal Components Analysis
+
+First lets partition the training data into a 60% 40% split as reccomended in the class.
+
+```{r}
+set.seed(999) 
+inTrain <- createDataPartition(training$classe, p=0.60, list=F)
+train_data <- training[inTrain, ]
+test_data <- training[-inTrain, ]
+```
+
+**TODO**
