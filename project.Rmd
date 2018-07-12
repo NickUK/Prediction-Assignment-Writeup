@@ -30,6 +30,11 @@ The data for this project come from this source: <http://groupware.les.inf.puc-r
 
 ```{r, include=F}
 library(caret, quietly=T)
+library(corrplot, quietly=T)
+library(rpart, quietly=T)
+library(rpart.plot, quietly=T)
+library(RColorBrewer, quietly=T)
+library(rattle, quietly=T)
 library(randomForest, quietly=T)
 
 if (!file.exists("pml-training.csv")) {
@@ -46,14 +51,14 @@ training <- read.csv("pml-training.csv")
 testing <- read.csv("pml-testing.csv")
 ```
 
-We can see that the classification (classe) is a factor of 5 levels:
+The classification (classe) is a factor of 5 levels:
 ```{r}
 levels(training$classe)
 ```
 
 Reading up on the information provided, class **A** would mean they completed the barbell lifts using the correct technique and the other levels are lifts with common mistakes.
 
-We can count the number of NA variables in each column
+Grab a count of the number of NA variables in each column
 
 ```{r}
 na_counts <- sapply(training, function(x) sum(length(which(is.na(x)))))
@@ -75,15 +80,29 @@ training <- training[,-nsv]
 testing <- testing[,-nsv]
 ```
 
-We now have `r dim(testing)[2]` columns remaining. 
+Out of the remaining columns, the first 6 are either time series data or username data. We can remove those columns before continuing. We remove the same columns from the testing data too.
 
-**TODO**
-- Check correlation?
-- Remove non-numerical?
+```{r}
+training <- training[,7:dim(training)[2]]
+testing <- testing[,7:dim(testing)[2]]
+```
 
-## Principal Components Analysis
+We can now see that all our columns are also numerical (except for the classe). Finally we can remove any highly correlated variables.
 
-First lets partition the training data into a 60% 40% split as reccomended in the class.
+```{r}
+cor_matrix <- cor(training[,1:52]) # Excluding the classe
+corrplot(cor_matrix, 
+         order="hclust", 
+         type="upper", 
+         tl.cex = 0.6, 
+         tl.col = rgb(0, 0, 0))
+```
+
+There are a few quite highly correlated variables and we could look at removing them but I have chosen to leave them. We are now left with `r dim(training)[2]` interesting columns to evaluate. 
+
+## Fitting a model
+
+First lets partition the training data into a 60% 40% split as reccomended in the class. I will then look at trying two popular methods to model the data (decision tree and random forest).
 
 ```{r}
 set.seed(999) 
@@ -92,4 +111,56 @@ train_data <- training[inTrain, ]
 test_data <- training[-inTrain, ]
 ```
 
-**TODO**
+### Decision tree
+
+Use a decision tree to model the data. You may need a magnifying glass for this plot. 
+
+```{r}
+set.seed(1000)
+dt_fit <- rpart(classe ~ ., 
+                  data = train_data, 
+                  method="class")
+fancyRpartPlot(dt_fit)
+```
+
+Make a prediction on the test set
+
+```{r}
+dt_prediction <- predict(dt_fit, newdata=test_data, type="class")
+dt_confusion_matrix <- confusionMatrix(dt_prediction, test_data$classe)
+dt_confusion_matrix
+```
+
+This has an accuracy of `r round(dt_confusion_matrix$overall['Accuracy'], 2)`
+
+### Random Forest
+
+Using random forest to model the data.
+
+```{r}
+set.seed(1001)
+rm_fit <- train(classe ~ ., 
+                          data=train_data, 
+                          method="rf",
+                          trControl=trainControl(method="cv", number=3, verboseIter=F))
+rm_fit$finalModel
+```
+
+Make a prediction on the test set
+
+```{r}
+rf_prediction <- predict(rm_fit, newdata=test_data)
+rf_confusion_matrix <- confusionMatrix(rf_prediction, test_data$classe)
+rf_confusion_matrix
+```
+
+This has an accuracy of `r round(rf_confusion_matrix$overall['Accuracy'], 2)`
+
+## Final model fit
+
+The random forest model performed much better and so I will use that to perform my final prediction.
+
+```{r}
+final_prediction <- predict(rm_fit, newdata=testing)
+final_prediction
+```
